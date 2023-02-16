@@ -1,6 +1,6 @@
 import pygame
 from support import import_folder
-from settings import tile_size
+from settings import tile_size, screen_ratio
 
 class Player(pygame.sprite.Sprite):
 
@@ -14,13 +14,14 @@ class Player(pygame.sprite.Sprite):
 		self.image = self.animations['idle'][self.frame_index]
 		self.size = size
 		self.image = pygame.transform.scale(self.image, (self.size, self.size))	
-		self.rect = self.image.get_rect()
+		self.rect = self.image.get_rect(topleft = position)
 
 		# Player movement
 		self.direction = pygame.math.Vector2(0, 0)
-		self.speed = 8
-		self.gravity = 0.8
-		self.jump_speed = -16
+		self.max_speed = int(screen_ratio * 8)
+		self.current_speed = self.max_speed
+		self.gravity = screen_ratio * 0.8
+		self.jump_speed = screen_ratio * -18
 
 		# Player status. Used for animations and tile collision
 		self.status = 'idle'
@@ -73,7 +74,7 @@ class Player(pygame.sprite.Sprite):
 	def get_input(self):
 		keys = pygame.key.get_pressed()
 
-		if keys[pygame.K_RIGHT]:
+		if keys[pygame.K_RIGHT] and self.game_over == False:
 			if self.game_over == False:
 				self.facing_right = True
 				self.can_move_left = True
@@ -82,7 +83,7 @@ class Player(pygame.sprite.Sprite):
 				else:
 					self.direction.x = 0
 			
-		elif keys[pygame.K_LEFT]:
+		elif keys[pygame.K_LEFT] and self.game_over == False:
 			if self.game_over == False:
 				self.facing_right = False
 				self.can_move_right = True

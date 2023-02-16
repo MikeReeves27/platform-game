@@ -1,13 +1,14 @@
 import pygame
 from tiles import Tile, AnimatedTile
 from support import import_folder
+from settings import screen_ratio
 
 class Enemy(Tile):
 
 	def __init__(self, size, x, y, direction, speed, surface):
 		super().__init__(size, x, y)
 		self.direction = direction
-		self.speed = speed
+		self.speed = int(screen_ratio * speed)
 		self.image = surface
 
 
@@ -31,6 +32,7 @@ class Enemy(Tile):
 	def update(self, shift):
 		self.rect.x += shift
 		self.move()
+
 
 class AnimatedEnemy(Enemy):
 

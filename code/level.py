@@ -1,6 +1,6 @@
 import pygame
 from tiles import Tile, StaticTile, MovingTile, AnimatedTile
-from settings import tile_size, screen_width
+from settings import tile_size, screen_width, screen_height
 from player import Player
 from support import import_csv_layout
 from enemy import Enemy, AnimatedEnemy
@@ -31,8 +31,8 @@ class Level:
 		self.terrain_sprites = self.create_tile_group(terrain_layout, 'terrain')
 
 		# Terrain setup
-		platform_layout = import_csv_layout(level_data['platform'])
-		self.platform_sprites = self.create_tile_group(platform_layout, 'platform')
+		platform_layout = import_csv_layout(level_data['platforms'])
+		self.platform_sprites = self.create_tile_group(platform_layout, 'platforms')
 
 		# Fill setup. Used for filling screen with tiles that look solid but
 		# are only used for fill, so that needless collision calls aren't used
@@ -77,7 +77,7 @@ class Level:
 						sprite = StaticTile(tile_size, x, y, image)
 
 					# If tile is platform, create a moving tile.
-					elif type == 'platform':
+					elif type == 'platforms':
 						image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
 						image = pygame.transform.scale(image, (tile_size, tile_size))
 						sprite = MovingTile(tile_size, x, y, image, int(val) % 2)
@@ -122,8 +122,10 @@ class Level:
 					# Make player slightly smaller than tile size. This is to prevent
 					# random collision glitches. These occur when player enters a narrow
 					# tunnel and can't jump
+					print(y)
 					sprite = Player((x, y), tile_size - int(tile_size / 6))
 					self.player.add(sprite)
+					#print(self.player.rect.y)
 
 				# If tile value is 1, it's the level finish point (the portal)
 				elif val == '1':
@@ -150,36 +152,36 @@ class Level:
 		player = self.player.sprite
 
 		# If left side of player reaches left side of level, turn off player
-		# left movement. Allow 8 pixel buffer (this is because player is
+		# left movement. Allow pixel buffer (this is because player is
 		# updated before this function and can therefore slightly go off-screen)
-		if player.rect.x <= self.total_world_shift + 8:
+		if player.rect.x <= self.total_world_shift + player.max_speed:
 			player.can_move_left = False
 
 		# If right side of player reaches right side of level, turn off player
 		# right movement
-		elif player.rect.right >= screen_width - 8:
+		elif player.rect.right >= screen_width - player.max_speed:
 			player.can_move_right = False
 
-		# Shift screen right:
+		# Shift screen left:
 		# If center of player reaches center of screen, and player is facing left, and the world 
 		# shift is not at zero (meaning the screen is not at its leftmost point), begin shifting 
 		# world and keep player in center of screen
 		elif player.rect.centerx < screen_width / 2 and player.direction.x < 0 and self.total_world_shift != 0:
-			self.world_shift = 8
-			player.speed = 0
+			self.world_shift = player.max_speed
+			player.current_speed = 0
 			
-		# Shift screen left:
+		# Shift screen right:
 		# Same as above function, but this instead checks that the length of the world minus the 
 		# width of the screen is less than the total shift (meaning the screen is not at its
 		# rightmost point)
 		elif player.rect.centerx > screen_width - (screen_width / 2) and player.direction.x > 0 and abs(self.total_world_shift) < self.world_length - screen_width:
-			self.world_shift = -8
-			player.speed = 0
+			self.world_shift = -player.max_speed
+			player.current_speed = 0
 
 		# Else, player must therefore be idle
 		else:
 			self.world_shift = 0
-			player.speed = 8
+			player.current_speed = player.max_speed
 
 		self.total_world_shift += self.world_shift
 
@@ -187,9 +189,12 @@ class Level:
 	# Check for horizontal collision between player and solid tiles
 	def horizontal_movement_collision(self):
 		player = self.player.sprite
-		player.rect.x += player.direction.x * player.speed
+		player.rect.x += player.direction.x * player.current_speed
 
 		for sprite in self.terrain_sprites.sprites():
+
+			# Draw black rectangle around each terrain tile
+			pygame.draw.rect(self.display_surface, (0, 0, 0), sprite, 1)
 
 			if sprite.rect.colliderect(player.rect):
 
@@ -197,9 +202,13 @@ class Level:
 				# the tile they've just collided with
 				if player.direction.x < 0:
 					player.rect.left = sprite.rect.right
+					if player.direction.y > 0:
+						player.on_ground = False
 
 				elif player.direction.x > 0:
 					player.rect.right = sprite.rect.left
+					if player.direction.y > 0:
+						player.on_ground = False
 
 
 	# Check for vertical collision between player and solid tiles
@@ -230,27 +239,30 @@ class Level:
 
 		for sprite in self.platform_sprites.sprites():
 
+			# Draw black rectangle around each terrain tile
+			pygame.draw.rect(self.display_surface, (0, 0, 0), sprite, 1)
+
 			if sprite.rect.colliderect(player.rect):
 				
 				# In each collision (left, right, top, bottom), allow
-				# a 20-pixel buffer to account for the moving tile. This
+				# a 1/3 tile-buffer to account for the moving tile. This
 				# is because the tiles move faster than the update()
 				# functions are called, causing player to sometimes
 				# warp through tile
-				if abs(player.rect.left - sprite.rect.right) < 20:
+				if abs(player.rect.left - sprite.rect.right) < tile_size / 3:
 					player.rect.left = sprite.rect.right
 
-				elif abs(player.rect.right - sprite.rect.left) < 20:
+				elif abs(player.rect.right - sprite.rect.left) < tile_size / 3:
 					player.rect.right = sprite.rect.left
 
 				# Add 2 to player's y direction so that they bounce off
 				# tile after colliding with it from underneath
-				elif abs(player.rect.top - sprite.rect.bottom) < 20:
+				elif abs(player.rect.top - sprite.rect.bottom) < tile_size / 3:
 					player.direction.y += 2
 					player.rect.top = sprite.rect.bottom
 
 				# When player lands on moving platform
-				elif abs(player.rect.bottom - sprite.rect.top) < 20:
+				elif abs(player.rect.bottom - sprite.rect.top) < tile_size / 3:
 					player.direction.y = 0
 					player.on_ground = True
 
@@ -284,10 +296,18 @@ class Level:
 	# Check for collision between player and enemies
 	def enemy_collision(self):
 		player = self.player.sprite
-		for sprite in self.enemy_sprites.sprites():
-			if sprite.rect.colliderect(player.rect):
-				player.game_over = True
-				player.speed = 0
+
+		# If player falls off screen, it's game over
+		if player.rect.top > screen_height:
+			player.game_over = True
+			print('Game over')
+
+		# If player collides with enemy, it's game over
+		else:
+			for sprite in self.enemy_sprites.sprites():
+				if sprite.rect.colliderect(player.rect):
+					player.game_over = True
+					player.speed = 0
 
 
 	# Check for collision between player and portal
@@ -319,6 +339,10 @@ class Level:
 		self.platform_collision_reverse()
 		self.fill_sprites.update(self.world_shift)
 		self.fill_sprites.draw(self.display_surface)
+
+		# Draw black rectangle around each fill tile
+		for sprite in self.fill_sprites.sprites():
+			pygame.draw.rect(self.display_surface, (0, 0, 0), sprite, 1)
 
 		# Draw item tiles and check for collision
 		self.item_sprites.update(self.world_shift)

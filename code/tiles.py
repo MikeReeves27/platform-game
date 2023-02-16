@@ -1,5 +1,6 @@
 import pygame
 from support import import_folder
+from settings import screen_ratio
 
 class Tile(pygame.sprite.Sprite):
 
@@ -18,7 +19,6 @@ class StaticTile(Tile):
 	def __init__(self, size, x, y, surface):
 		super().__init__(size, x, y)
 		self.image = surface
-		#self.speed = 0
 
 
 class MovingTile(Tile):
@@ -27,7 +27,7 @@ class MovingTile(Tile):
 		super().__init__(size, x, y)
 		self.image = surface
 		self.direction = direction
-		self.speed = 3
+		self.speed = int(screen_ratio * 3)
 
 
 	def move(self):

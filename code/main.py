@@ -4,10 +4,10 @@ from level import Level
 from level_data import level_0, level_1
 
 # Pygame setup
-pygame.init()
-screen = pygame.display.set_mode((screen_width, screen_height))
+
+screen = pygame.display.set_mode((screen_width, screen_height), pygame.RESIZABLE)
 clock = pygame.time.Clock()
-level = Level(level_0, screen)
+level = Level(level_1, screen)
 
 while True:
 	for event in pygame.event.get():
@@ -15,7 +15,7 @@ while True:
 			pygame.quit()
 			sys.exit()
 
-	screen.fill('white')
+	screen.fill(level_1['background'])
 	level.run()
 
 	pygame.display.update()
