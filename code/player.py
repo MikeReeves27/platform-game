@@ -1,5 +1,6 @@
 import pygame
 from support import import_folder
+from settings import tile_size
 
 class Player(pygame.sprite.Sprite):
 
@@ -11,7 +12,9 @@ class Player(pygame.sprite.Sprite):
 		self.frame_index = 0
 		self.animation_speed = 0.7
 		self.image = self.animations['idle'][self.frame_index]
-		self.rect = self.image.get_rect(topleft = position)
+		self.size = size
+		self.image = pygame.transform.scale(self.image, (self.size, self.size))	
+		self.rect = self.image.get_rect()
 
 		# Player movement
 		self.direction = pygame.math.Vector2(0, 0)
@@ -23,14 +26,14 @@ class Player(pygame.sprite.Sprite):
 		self.status = 'idle'
 		self.facing_right = True
 		self.on_ground = False
-		self.on_ceiling = False
-		self.on_left = False
-		self.on_right = False
 
 		# Player's ability to move left/right. This is disabled when player
 		# reaches the level boundaries
 		self.can_move_left = True
 		self.can_move_right = True
+
+		# When player collides with enemy, game over is activated
+		self.game_over = False
 
 
 	# Import folder for storing images for animation
@@ -44,33 +47,26 @@ class Player(pygame.sprite.Sprite):
 
 	# Animate player
 	def animate(self):
-		animation = self.animations[self.status]
 
-		# Loop over frame index
-		self.frame_index += self.animation_speed
-		if self.frame_index >= len(animation):
-			self.frame_index = 0
+		if self.game_over == False:
+			animation = self.animations[self.status]
 
-		image = animation[int(self.frame_index)]
-		if self.facing_right:
-			self.image = image
+			# Loop over frame index
+			self.frame_index += self.animation_speed
+			if self.frame_index >= len(animation):
+				self.frame_index = 0
+
+			image = animation[int(self.frame_index)]
+			image = pygame.transform.scale(image, (self.size, self.size))
+			if self.facing_right:
+				self.image = image
+			else:
+				flipped_image = pygame.transform.flip(image, True, False)
+				self.image = flipped_image
+
 		else:
-			flipped_image = pygame.transform.flip(image, True, False)
-			self.image = flipped_image
-
-		# Set rectangle. Used for more accurate collision detection
-		if self.on_ground and self.on_right:
-			self.rect = self.image.get_rect(bottomright = self.rect.bottomright)
-		elif self.on_ground and self.on_left:
-			self.rect = self.image.get_rect(bottomleft = self.rect.bottomleft)
-		elif self.on_ground:
-			self.rect = self.image.get_rect(midbottom = self.rect.midbottom)
-		elif self.on_ceiling and self.on_right:
-			self.rect = self.image.get_rect(topright = self.rect.topright)
-		elif self.on_ceiling and self.on_left:
-			self.rect = self.image.get_rect(topleft = self.rect.topleft)
-		elif self.on_ceiling:
-			self.rect = self.image.get_rect(midtop = self.rect.midtop)
+			self.image = pygame.image.load('../graphics/player/dead.png').convert_alpha()
+			self.image = pygame.transform.scale(self.image, (self.size, self.size))
 
 
 	# Set keyboard input
@@ -78,24 +74,27 @@ class Player(pygame.sprite.Sprite):
 		keys = pygame.key.get_pressed()
 
 		if keys[pygame.K_RIGHT]:
-			self.facing_right = True
-			self.can_move_left = True
-			if self.can_move_right:
-				self.direction.x = 1
-			else:
-				self.direction.x = 0
+			if self.game_over == False:
+				self.facing_right = True
+				self.can_move_left = True
+				if self.can_move_right:
+					self.direction.x = 1
+				else:
+					self.direction.x = 0
 			
 		elif keys[pygame.K_LEFT]:
-			self.facing_right = False
-			self.can_move_right = True
-			if self.can_move_left:
-				self.direction.x = -1
-			else:
-				self.direction.x = 0
+			if self.game_over == False:
+				self.facing_right = False
+				self.can_move_right = True
+				if self.can_move_left:
+					self.direction.x = -1
+				else:
+					self.direction.x = 0
 		else:
 			self.direction.x = 0
 
-		if keys[pygame.K_SPACE] and self.on_ground:
+		if keys[pygame.K_SPACE] and self.on_ground == True and self.game_over == False:
+			self.on_ground = False
 			self.jump()
 
 

@@ -1,5 +1,5 @@
 import pygame
-from tiles import Tile, StaticTile
+from tiles import Tile, StaticTile, MovingTile, AnimatedTile
 from settings import tile_size, screen_width
 from player import Player
 from support import import_csv_layout
@@ -25,11 +25,14 @@ class Level:
 		self.player = pygame.sprite.GroupSingle()
 		self.portal = pygame.sprite.GroupSingle()
 		self.player_setup(player_layout)
-		self.current_x = None
 
 		# Terrain setup
 		terrain_layout = import_csv_layout(level_data['terrain'])
 		self.terrain_sprites = self.create_tile_group(terrain_layout, 'terrain')
+
+		# Terrain setup
+		platform_layout = import_csv_layout(level_data['platform'])
+		self.platform_sprites = self.create_tile_group(platform_layout, 'platform')
 
 		# Fill setup. Used for filling screen with tiles that look solid but
 		# are only used for fill, so that needless collision calls aren't used
@@ -47,6 +50,12 @@ class Level:
 		# Constraints. Used for setting enemy movement to a specific path
 		constraint_layout = import_csv_layout(level_data['constraints'])
 		self.constraint_sprites = self.create_tile_group(constraint_layout, 'constraint')
+
+		# Corn count. This tracks the number of corn collected and the total number
+		# available. The font will be used to display the score on the screen
+		self.corn_count = 0
+		self.corn_total = len(self.item_sprites.sprites())
+		self.font = pygame.font.SysFont('Consolas', int(tile_size / 2))
 
 	
 	def create_tile_group(self, layout, type):
@@ -66,6 +75,12 @@ class Level:
 						image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
 						image = pygame.transform.scale(image, (tile_size, tile_size))
 						sprite = StaticTile(tile_size, x, y, image)
+
+					# If tile is platform, create a moving tile.
+					elif type == 'platform':
+						image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
+						image = pygame.transform.scale(image, (tile_size, tile_size))
+						sprite = MovingTile(tile_size, x, y, image, int(val) % 2)
 
 					# If tile is fill, create static tile using the image specified in level_data
 					elif type == 'fill':
@@ -103,13 +118,16 @@ class Level:
 
 				# If tile value is 0, it's the player starting point
 				if val == '0':
-					sprite = Player((x, y), self.display_surface)
+					
+					# Make player slightly smaller than tile size. This is to prevent
+					# random collision glitches. These occur when player enters a narrow
+					# tunnel and can't jump
+					sprite = Player((x, y), tile_size - int(tile_size / 6))
 					self.player.add(sprite)
 
 				# If tile value is 1, it's the level finish point (the portal)
 				elif val == '1':
-					portal_image = pygame.image.load('../graphics/world/portal.png').convert_alpha()
-					sprite = StaticTile(tile_size, x, y, portal_image)
+					sprite = AnimatedTile(tile_size, x, y, None, 'portal/')
 					self.portal.add(sprite)
 
 
@@ -120,10 +138,16 @@ class Level:
 				enemy.reverse_direction()
 
 
+	# If moving platform collides with constraint tile, platform reverses direction
+	def platform_collision_reverse(self):
+		for platform in self.platform_sprites.sprites():
+			if pygame.sprite.spritecollide(platform, self.constraint_sprites, False):
+				platform.reverse_direction()
+
+
 	# Used to scroll player and the surrounding world
 	def scroll_x(self):
 		player = self.player.sprite
-		direction_x = player.direction.x
 
 		# If left side of player reaches left side of level, turn off player
 		# left movement. Allow 8 pixel buffer (this is because player is
@@ -140,7 +164,7 @@ class Level:
 		# If center of player reaches center of screen, and player is facing left, and the world 
 		# shift is not at zero (meaning the screen is not at its leftmost point), begin shifting 
 		# world and keep player in center of screen
-		elif player.rect.centerx < screen_width / 2 and direction_x < 0 and self.total_world_shift != 0:
+		elif player.rect.centerx < screen_width / 2 and player.direction.x < 0 and self.total_world_shift != 0:
 			self.world_shift = 8
 			player.speed = 0
 			
@@ -148,7 +172,7 @@ class Level:
 		# Same as above function, but this instead checks that the length of the world minus the 
 		# width of the screen is less than the total shift (meaning the screen is not at its
 		# rightmost point)
-		elif player.rect.centerx > screen_width - (screen_width / 2) and direction_x > 0 and abs(self.total_world_shift) < self.world_length - screen_width:
+		elif player.rect.centerx > screen_width - (screen_width / 2) and player.direction.x > 0 and abs(self.total_world_shift) < self.world_length - screen_width:
 			self.world_shift = -8
 			player.speed = 0
 
@@ -166,20 +190,16 @@ class Level:
 		player.rect.x += player.direction.x * player.speed
 
 		for sprite in self.terrain_sprites.sprites():
+
 			if sprite.rect.colliderect(player.rect):
-				if player.direction.x < 0: 
+
+				# Set player's left/right side to match that of the
+				# the tile they've just collided with
+				if player.direction.x < 0:
 					player.rect.left = sprite.rect.right
-					player.on_left = True
-					self.current_x = player.rect.left
+
 				elif player.direction.x > 0:
 					player.rect.right = sprite.rect.left
-					player.on_right = True
-					self.current_x = player.rect.right
-
-		if player.on_left and (player.rect.left < self.current_x or player.direction.x >= 0):
-			player.on_left = False
-		if player.on_right and (player.rect.right > self.current_x or player.direction.x <= 0):
-			player.on_right = False
 
 
 	# Check for vertical collision between player and solid tiles
@@ -188,20 +208,68 @@ class Level:
 		player.apply_gravity()
 
 		for sprite in self.terrain_sprites.sprites():
+
 			if sprite.rect.colliderect(player.rect):
+
+				# If player lands on tile, set player's y movement to 0
+				# Set on_ground to True so that they can jump again
 				if player.direction.y > 0:
 					player.rect.bottom = sprite.rect.top
 					player.direction.y = 0
 					player.on_ground = True
+
+				# If player hits tile from underneath, set player's
+				# y movement to 0
 				elif player.direction.y < 0:
 					player.rect.top = sprite.rect.bottom
 					player.direction.y = 0
-					player.on_ceiling = True
 
-		if player.on_ground and player.direction.y < 0 or player.direction.y > 1:
-			player.on_ground = False
-		if player.on_ceiling and player.direction.y > 0.1:
-			player.on_ceiling = False
+	# Check for collision between player and moving platforms
+	def platform_collision(self):
+		player = self.player.sprite
+
+		for sprite in self.platform_sprites.sprites():
+
+			if sprite.rect.colliderect(player.rect):
+				
+				# In each collision (left, right, top, bottom), allow
+				# a 20-pixel buffer to account for the moving tile. This
+				# is because the tiles move faster than the update()
+				# functions are called, causing player to sometimes
+				# warp through tile
+				if abs(player.rect.left - sprite.rect.right) < 20:
+					player.rect.left = sprite.rect.right
+
+				elif abs(player.rect.right - sprite.rect.left) < 20:
+					player.rect.right = sprite.rect.left
+
+				# Add 2 to player's y direction so that they bounce off
+				# tile after colliding with it from underneath
+				elif abs(player.rect.top - sprite.rect.bottom) < 20:
+					player.direction.y += 2
+					player.rect.top = sprite.rect.bottom
+
+				# When player lands on moving platform
+				elif abs(player.rect.bottom - sprite.rect.top) < 20:
+					player.direction.y = 0
+					player.on_ground = True
+
+					# If platform is horizontally moving, match player's
+					# rect.x position with tile's speed so that player
+					# remains standing on it
+					if sprite.direction == 0:
+						player.rect.x += sprite.speed
+
+					# If platform is vertically moving, allow 1 and 3 pixels
+					# depending on its direction so that player remains
+					# standing smoothly on it. Without that, player will shake
+					elif sprite.direction == 1:
+
+						if sprite.speed > 0:
+							player.rect.bottom = sprite.rect.top + sprite.speed + 1
+						
+						elif sprite.speed < 0:
+							player.rect.bottom = sprite.rect.top + sprite.speed + 3
 
 
 	# Check for collision between player and items such as corn
@@ -210,6 +278,7 @@ class Level:
 		for sprite in self.item_sprites.sprites():
 			if sprite.rect.colliderect(player.rect):
 				sprite.kill()
+				self.corn_count += 1
 
 
 	# Check for collision between player and enemies
@@ -217,8 +286,8 @@ class Level:
 		player = self.player.sprite
 		for sprite in self.enemy_sprites.sprites():
 			if sprite.rect.colliderect(player.rect):
-				#player.kill()
-				print('game over')
+				player.game_over = True
+				player.speed = 0
 
 
 	# Check for collision between player and portal
@@ -228,13 +297,26 @@ class Level:
 			print('victory')
 
 
+	# Draw player's current score in top-left corner of screen
+	def draw_inventory(self):
+		image = pygame.image.load('../graphics/items/0.png').convert_alpha()
+		image = pygame.transform.scale(image, (32, 32))
+		self.display_surface.blit(image, (image.get_width() / 2, image.get_height() / 2))
+		score = str(self.corn_count) + '/' + str(self.corn_total)
+		score_display = self.font.render(score, True, (0, 0, 0))
+		self.display_surface.blit(score_display, (tile_size + image.get_width() / 2, image.get_height() / 2))
+
+
 	# Main level function for looping through all sprite and tile updates,
 	# as well as drawing all images to screen
 	def run(self):
 		
-		# Draw terrtain and file tiles
+		# Draw terrain and file tiles
 		self.terrain_sprites.update(self.world_shift)
 		self.terrain_sprites.draw(self.display_surface)
+		self.platform_sprites.update(self.world_shift)
+		self.platform_sprites.draw(self.display_surface)
+		self.platform_collision_reverse()
 		self.fill_sprites.update(self.world_shift)
 		self.fill_sprites.draw(self.display_surface)
 
@@ -243,21 +325,27 @@ class Level:
 		self.item_sprites.draw(self.display_surface)
 		self.item_collision()
 
-		# Draw portal tile and check for collision
+		# Draw portal tile and check for collision. Only draw portal
+		# once all corn is collected
 		self.portal.update(self.world_shift)
-		self.portal.draw(self.display_surface)
-		self.portal_collision()
+		if self.corn_count == self.corn_total:
+			self.portal.draw(self.display_surface)
+			self.portal_collision()
 
 		# Update/draw player, scroll screen, check for tile collision
 		self.player.update()
 		self.scroll_x()
 		self.horizontal_movement_collision()
 		self.vertical_movement_collision()
+		self.platform_collision()
 		self.player.draw(self.display_surface)
-		
+
 		# Update/draw enemies and check for constraint collision
 		self.enemy_sprites.update(self.world_shift)
 		self.constraint_sprites.update(self.world_shift)
 		self.enemy_collision_reverse()
 		self.enemy_sprites.draw(self.display_surface)
 		self.enemy_collision()
+
+		# Draw score on screen
+		self.draw_inventory()

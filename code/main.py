@@ -1,7 +1,7 @@
 import pygame, sys
 from settings import *
 from level import Level
-from level_data import level_0
+from level_data import level_0, level_1
 
 # Pygame setup
 pygame.init()
@@ -20,4 +20,3 @@ while True:
 
 	pygame.display.update()
 	clock.tick(60)
-	# Commit test
