@@ -4,9 +4,9 @@ from settings import screen_ratio
 
 class Tile(pygame.sprite.Sprite):
 
-	def __init__(self, size, x, y):
+	def __init__(self, width, height, x, y):
 		super().__init__()
-		self.image = pygame.Surface((size, size))
+		self.image = pygame.Surface((width, height))
 		self.rect = self.image.get_rect(topleft = (x, y))
 
 
@@ -16,15 +16,15 @@ class Tile(pygame.sprite.Sprite):
 
 class StaticTile(Tile):
 	
-	def __init__(self, size, x, y, surface):
-		super().__init__(size, x, y)
+	def __init__(self, width, height, x, y, surface):
+		super().__init__(width, height, x, y)
 		self.image = surface
 
 
 class MovingTile(Tile):
 	
-	def __init__(self, size, x, y, surface, direction):
-		super().__init__(size, x, y)
+	def __init__(self, width, height, x, y, surface, direction):
+		super().__init__(width, height, x, y)
 		self.image = surface
 		self.direction = direction
 		self.speed = int(screen_ratio * 3)
@@ -48,8 +48,8 @@ class MovingTile(Tile):
 
 class AnimatedTile(Tile):
 
-	def __init__(self, size, x, y, surface, path_index):
-		super().__init__(size, x, y)
+	def __init__(self, width, height, x, y, surface, path_index):
+		super().__init__(width, height, x, y)
 		self.path = '../graphics/' + str(path_index)
 		self.frames = import_folder(self.path)
 		self.frame_index = 0

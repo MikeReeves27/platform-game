@@ -8,11 +8,13 @@ from enemy_data import enemy_list
 
 class Level:
 
-	def __init__(self, level_data, surface):
+	def __init__(self, level_data, surface, status):
 
 		# Level setup
 		self.display_surface = surface
 		self.level_data = level_data
+		self.status = status
+		self.game_over_timer = 0
 
 		# World shift variables. Used for determining if player reaches
 		# end of the screen
@@ -74,36 +76,39 @@ class Level:
 					if type == 'terrain' or type == 'items':
 						image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
 						image = pygame.transform.scale(image, (tile_size, tile_size))
-						sprite = StaticTile(tile_size, x, y, image)
+						sprite = StaticTile(tile_size, tile_size, x, y, image)
 
 					# If tile is platform, create a moving tile.
 					elif type == 'platforms':
 						image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
 						image = pygame.transform.scale(image, (tile_size, tile_size))
-						sprite = MovingTile(tile_size, x, y, image, int(val) % 2)
+						sprite = MovingTile(tile_size, tile_size, x, y, image, int(val) % 2)
 
 					# If tile is fill, create static tile using the image specified in level_data
 					elif type == 'fill':
 						image = pygame.image.load(self.level_data['fill_image']).convert_alpha()
 						image = pygame.transform.scale(image, (tile_size, tile_size))
-						sprite = StaticTile(tile_size, x, y, image)
+						sprite = StaticTile(tile_size, tile_size, x, y, image)
 
 					# If tile is enemy, create an enemy tile
 					elif type == 'enemies':
 
+						image_width = tile_size * enemy_list[int(val)][1]
+						image_height = tile_size * enemy_list[int(val)][2]
+
 						# If enemy data value is 0, load static sprite
 						if enemy_list[int(val)][0] == 0:
 							image = pygame.image.load(f'../graphics/{type}/{val}.png').convert_alpha()
-							image = pygame.transform.scale(image, (tile_size, tile_size))
-							sprite = Enemy(tile_size, x, y, enemy_list[int(val)][1], enemy_list[int(val)][2], image)
+							image = pygame.transform.scale(image, (image_width, image_height))
+							sprite = Enemy(image_width, image_height, x, y, enemy_list[int(val)][3], enemy_list[int(val)][4], image)
 
 						# If enemy data value is 1, load animated sprite
 						elif enemy_list[int(val)][0] == 1:
-							sprite = AnimatedEnemy(tile_size, x, y, enemy_list[int(val)][1], enemy_list[int(val)][2], None, int(val))
+							sprite = AnimatedEnemy(image_width, image_height, x, y, enemy_list[int(val)][3], enemy_list[int(val)][4], None, int(val))
 
 					# If tile is constraint, create a blank, imageless tile
 					elif type == 'constraint':
-						sprite = Tile(tile_size, x, y)
+						sprite = Tile(tile_size, tile_size, x, y)
 
 					sprite_group.add(sprite)
 		
@@ -122,14 +127,12 @@ class Level:
 					# Make player slightly smaller than tile size. This is to prevent
 					# random collision glitches. These occur when player enters a narrow
 					# tunnel and can't jump
-					print(y)
 					sprite = Player((x, y), tile_size - int(tile_size / 6))
 					self.player.add(sprite)
-					#print(self.player.rect.y)
 
 				# If tile value is 1, it's the level finish point (the portal)
 				elif val == '1':
-					sprite = AnimatedTile(tile_size, x, y, None, 'portal/')
+					sprite = AnimatedTile(tile_size, tile_size, x, y, None, 'portal/')
 					self.portal.add(sprite)
 
 
@@ -201,12 +204,16 @@ class Level:
 				# Set player's left/right side to match that of the
 				# the tile they've just collided with
 				if player.direction.x < 0:
-					player.rect.left = sprite.rect.right
+
+					player.direction.x = 0
+					player.rect.centerx = sprite.rect.right + tile_size / 2
 					if player.direction.y > 0:
 						player.on_ground = False
 
 				elif player.direction.x > 0:
-					player.rect.right = sprite.rect.left
+
+					player.direction.x = 0
+					player.rect.centerx = sprite.rect.left - tile_size / 2
 					if player.direction.y > 0:
 						player.on_ground = False
 
@@ -222,8 +229,14 @@ class Level:
 
 				# If player lands on tile, set player's y movement to 0
 				# Set on_ground to True so that they can jump again
+				# If player is on moving platform, add buffer for vertical collision
+				# so that player doesn't warp to top of static tile. This will keep
+				# player on moving platform
 				if player.direction.y > 0:
-					player.rect.bottom = sprite.rect.top
+					if player.on_platform == True:
+						player.rect.bottom = sprite.rect.top + tile_size / 8
+					else:
+						player.rect.bottom = sprite.rect.top
 					player.direction.y = 0
 					player.on_ground = True
 
@@ -265,6 +278,7 @@ class Level:
 				elif abs(player.rect.bottom - sprite.rect.top) < tile_size / 3:
 					player.direction.y = 0
 					player.on_ground = True
+					player.on_platform = True
 
 					# If platform is horizontally moving, match player's
 					# rect.x position with tile's speed so that player
@@ -283,6 +297,9 @@ class Level:
 						elif sprite.speed < 0:
 							player.rect.bottom = sprite.rect.top + sprite.speed + 3
 
+			else:
+				player.on_platform = False
+
 
 	# Check for collision between player and items such as corn
 	def item_collision(self):
@@ -300,7 +317,7 @@ class Level:
 		# If player falls off screen, it's game over
 		if player.rect.top > screen_height:
 			player.game_over = True
-			print('Game over')
+			player.direction.y = 0
 
 		# If player collides with enemy, it's game over
 		else:
@@ -314,13 +331,27 @@ class Level:
 	def portal_collision(self):
 		player = self.player.sprite
 		if self.portal.sprite.rect.colliderect(player.rect):
-			print('victory')
+			player.game_over = True
+			player.speed = 0
+
+
+	# Check for game over condition
+	def check_game_over(self):
+		player = self.player.sprite
+
+		# If game over has been activated, get current pygame time
+		if player.game_over and self.game_over_timer == 0:
+			self.game_over_timer = pygame.time.get_ticks()
+
+		# After 1500ms, set status back to overworld
+		if pygame.time.get_ticks() > self.game_over_timer + 1500 and self.game_over_timer != 0:
+			self.status = 'start_overworld'
 
 
 	# Draw player's current score in top-left corner of screen
 	def draw_inventory(self):
 		image = pygame.image.load('../graphics/items/0.png').convert_alpha()
-		image = pygame.transform.scale(image, (32, 32))
+		image = pygame.transform.scale(image, (int(tile_size / 2), (int(tile_size / 2))))
 		self.display_surface.blit(image, (image.get_width() / 2, image.get_height() / 2))
 		score = str(self.corn_count) + '/' + str(self.corn_total)
 		score_display = self.font.render(score, True, (0, 0, 0))
@@ -370,6 +401,9 @@ class Level:
 		self.enemy_collision_reverse()
 		self.enemy_sprites.draw(self.display_surface)
 		self.enemy_collision()
+
+		# Check if game over has been activated
+		self.check_game_over()
 
 		# Draw score on screen
 		self.draw_inventory()

@@ -27,6 +27,7 @@ class Player(pygame.sprite.Sprite):
 		self.status = 'idle'
 		self.facing_right = True
 		self.on_ground = False
+		self.on_platform = False
 
 		# Player's ability to move left/right. This is disabled when player
 		# reaches the level boundaries
